@@ -16,3 +16,4 @@ cd polar-cli
 bun install
 bun run build:binary:windows-x64
 ```
+Copy path of folder where polar-cli was built where the polar.exe file exists into Windows PATH
