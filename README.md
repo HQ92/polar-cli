@@ -11,7 +11,7 @@ Currently in development.
 
 ## To get working Windows
 ```
-git clone https://github.com/a-essawy/polar-cli.git
+git clone https://github.com/HQ92/polar-cli.git
 cd polar-cli
 bun install
 bun run build:binary:windows-x64
