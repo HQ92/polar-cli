@@ -332,9 +332,9 @@ const deleteTokenFile = Effect.gen(function* () {
 
 	yield* Effect.logDebug("Deleting token file...");
 
-	return yield* fileSystem
-		.remove(filePath)
-		.pipe(Effect.catchAll(() => Effect.void));
+	return yield* fileSystem.remove(filePath).pipe(
+		Effect.catchAll(() => Effect.void),
+	);
 });
 
 const generateRandomString = Effect.sync(() => randomBytes(48).toString("hex"));

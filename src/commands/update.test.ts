@@ -102,7 +102,6 @@ describe("replaceBinary", () => {
 	test("leaves no temp file behind after success", async () => {
 		await Effect.runPromise(replaceBinary(newBinaryPath, binaryPath));
 
-		// list files in dir — only the replaced binary should remain
 		const { readdir } = await import("fs/promises");
 		const files = await readdir(dir);
 		const tempFiles = files.filter((f) => f.startsWith(".polar-update-"));
@@ -112,7 +111,6 @@ describe("replaceBinary", () => {
 	test("throws and cleans up temp file on non-EACCES write error", async () => {
 		if (process.platform === "win32") return;
 
-		// Simulate a generic I/O error during Bun.write (not EACCES)
 		const bunSpy = spyOn(Bun, "write").mockImplementationOnce(() =>
 			Promise.reject(new Error("EIO: input/output error")),
 		);
@@ -132,21 +130,18 @@ describe("replaceBinary", () => {
 	test("does not throw when EACCES triggers sudo fallback", async () => {
 		if (process.platform === "win32") return;
 
-		// Simulate EACCES on rename by mocking Bun.write to throw it
 		const bunSpy = spyOn(Bun, "write").mockImplementationOnce(() => {
 			const err: any = new Error("EACCES: permission denied");
 			err.code = "EACCES";
 			return Promise.reject(err);
 		});
 
-		// Mock Bun.spawn so sudo mv appears to succeed
 		const spawnSpy = spyOn(Bun, "spawn").mockImplementationOnce(() => ({
 			exited: Promise.resolve(0),
 		}));
 
 		await Effect.runPromise(replaceBinary(newBinaryPath, binaryPath));
 
-		// Verify sudo mv was called with the right args
 		expect(spawnSpy).toHaveBeenCalledWith(
 			["sudo", "mv", newBinaryPath, binaryPath],
 			expect.objectContaining({ stdin: "inherit" }),
