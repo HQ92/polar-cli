@@ -1,9 +1,9 @@
 # Polar CLI installer for Windows
-# Usage: powershell -ExecutionPolicy ByPass -c "irm https://raw.githubusercontent.com/polarsource/cli/main/install.ps1 | iex"
+# Usage: powershell -ExecutionPolicy ByPass -c "irm https://raw.githubusercontent.com/HQ92/polar-cli/main/install.ps1 | iex"
 
 $ErrorActionPreference = "Stop"
 
-$Repo = "polarsource/cli"
+$Repo = "HQ92/polar-cli"
 $BinaryName = "polar.exe"
 $InstallDir = Join-Path $HOME ".polar\bin"
 

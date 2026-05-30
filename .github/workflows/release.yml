@@ -9,32 +9,45 @@ permissions:
   contents: write
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install
+
+      - run: bun test
+
   build:
+    needs: test
     strategy:
       matrix:
         include:
           - target: bun-darwin-arm64
             artifact: polar-darwin-arm64
-            os: ubuntu-latest
-            ext: tar.gz
+            ext: zip
             binary: polar
           - target: bun-darwin-x64
             artifact: polar-darwin-x64
-            os: ubuntu-latest
-            ext: tar.gz
+            ext: zip
             binary: polar
           - target: bun-linux-x64
             artifact: polar-linux-x64
-            os: ubuntu-latest
             ext: tar.gz
             binary: polar
           - target: bun-windows-x64
             artifact: polar-windows-x64
-            os: ubuntu-latest
             ext: zip
             binary: polar.exe
 
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4

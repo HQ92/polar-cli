@@ -1,0 +1,179 @@
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import { Effect } from "effect";
+import { mkdtemp, readFile, rm, stat, writeFile } from "fs/promises";
+import { tmpdir } from "os";
+import { join } from "path";
+import {
+	getArchiveExtractionCommand,
+	getReleaseArchiveName,
+	replaceBinary,
+} from "./update";
+
+async function makeTemp() {
+	return mkdtemp(join(tmpdir(), "polar-test-"));
+}
+
+describe("getReleaseArchiveName", () => {
+	test("uses zip archives for darwin releases", () => {
+		expect(getReleaseArchiveName({ os: "darwin", arch: "arm64" })).toBe(
+			"polar-darwin-arm64.zip",
+		);
+		expect(getReleaseArchiveName({ os: "darwin", arch: "x64" })).toBe(
+			"polar-darwin-x64.zip",
+		);
+	});
+
+	test("uses tar.gz archives for linux releases", () => {
+		expect(getReleaseArchiveName({ os: "linux", arch: "x64" })).toBe(
+			"polar-linux-x64.tar.gz",
+		);
+	});
+
+	test("uses zip archives for windows releases", () => {
+		expect(getReleaseArchiveName({ os: "windows", arch: "x64" })).toBe(
+			"polar-windows-x64.zip",
+		);
+	});
+});
+
+describe("getArchiveExtractionCommand", () => {
+	test("uses the platform zip extractor", () => {
+		if (process.platform === "win32") {
+			expect(
+				getArchiveExtractionCommand("C:\\tmp\\polar.zip", "C:\\tmp\\out"),
+			).toEqual([
+				"powershell",
+				"-NoProfile",
+				"-Command",
+				"Expand-Archive -LiteralPath 'C:\\tmp\\polar.zip' -DestinationPath 'C:\\tmp\\out' -Force",
+			]);
+			return;
+		}
+
+		expect(getArchiveExtractionCommand("/tmp/polar.zip", "/tmp/out")).toEqual([
+			"ditto",
+			"-x",
+			"-k",
+			"/tmp/polar.zip",
+			"/tmp/out",
+		]);
+	});
+
+	test("uses tar for tar.gz archives", () => {
+		expect(
+			getArchiveExtractionCommand("/tmp/polar.tar.gz", "/tmp/out"),
+		).toEqual(["tar", "-xzf", "/tmp/polar.tar.gz", "-C", "/tmp/out"]);
+	});
+});
+
+describe("replaceBinary", () => {
+	let dir: string;
+	let newBinaryPath: string;
+	let binaryPath: string;
+
+	beforeEach(async () => {
+		dir = await makeTemp();
+		newBinaryPath = join(dir, "polar-new");
+		binaryPath = join(dir, "polar");
+		await writeFile(newBinaryPath, "#!/bin/sh\necho new");
+		await writeFile(binaryPath, "#!/bin/sh\necho old");
+	});
+
+	afterEach(async () => {
+		await rm(dir, { recursive: true, force: true });
+	});
+
+	test("replaces target binary with new binary content", async () => {
+		await Effect.runPromise(replaceBinary(newBinaryPath, binaryPath));
+
+		const content = await readFile(binaryPath, "utf8");
+		expect(content).toBe("#!/bin/sh\necho new");
+	});
+
+	test("sets executable permissions on target binary", async () => {
+		if (process.platform === "win32") return;
+
+		await Effect.runPromise(replaceBinary(newBinaryPath, binaryPath));
+
+		const s = await stat(binaryPath);
+		expect(s.mode & 0o111).toBeGreaterThan(0);
+	});
+
+	test("leaves no temp file behind after success", async () => {
+		await Effect.runPromise(replaceBinary(newBinaryPath, binaryPath));
+
+		// list files in dir — only the replaced binary should remain
+		const { readdir } = await import("fs/promises");
+		const files = await readdir(dir);
+		const tempFiles = files.filter((f) => f.startsWith(".polar-update-"));
+		expect(tempFiles).toHaveLength(0);
+	});
+
+	test("throws and cleans up temp file on non-EACCES write error", async () => {
+		if (process.platform === "win32") return;
+
+		// Simulate a generic I/O error during Bun.write (not EACCES)
+		const bunSpy = spyOn(Bun, "write").mockImplementationOnce(() =>
+			Promise.reject(new Error("EIO: input/output error")),
+		);
+
+		await expect(
+			Effect.runPromise(replaceBinary(newBinaryPath, binaryPath)),
+		).rejects.toThrow("EIO");
+
+		const { readdir } = await import("fs/promises");
+		const files = await readdir(dir);
+		const tempFiles = files.filter((f) => f.startsWith(".polar-update-"));
+		expect(tempFiles).toHaveLength(0);
+
+		bunSpy.mockRestore();
+	});
+
+	test("does not throw when EACCES triggers sudo fallback", async () => {
+		if (process.platform === "win32") return;
+
+		// Simulate EACCES on rename by mocking Bun.write to throw it
+		const bunSpy = spyOn(Bun, "write").mockImplementationOnce(() => {
+			const err: any = new Error("EACCES: permission denied");
+			err.code = "EACCES";
+			return Promise.reject(err);
+		});
+
+		// Mock Bun.spawn so sudo mv appears to succeed
+		const spawnSpy = spyOn(Bun, "spawn").mockImplementationOnce(() => ({
+			exited: Promise.resolve(0),
+		}));
+
+		await Effect.runPromise(replaceBinary(newBinaryPath, binaryPath));
+
+		// Verify sudo mv was called with the right args
+		expect(spawnSpy).toHaveBeenCalledWith(
+			["sudo", "mv", newBinaryPath, binaryPath],
+			expect.objectContaining({ stdin: "inherit" }),
+		);
+
+		bunSpy.mockRestore();
+		spawnSpy.mockRestore();
+	});
+
+	test("throws when sudo mv exits non-zero", async () => {
+		if (process.platform === "win32") return;
+
+		const bunSpy = spyOn(Bun, "write").mockImplementationOnce(() => {
+			const err: any = new Error("EACCES: permission denied");
+			err.code = "EACCES";
+			return Promise.reject(err);
+		});
+
+		const spawnSpy = spyOn(Bun, "spawn").mockImplementationOnce(() => ({
+			exited: Promise.resolve(1),
+		}));
+
+		await expect(
+			Effect.runPromise(replaceBinary(newBinaryPath, binaryPath)),
+		).rejects.toThrow("sudo mv failed");
+
+		bunSpy.mockRestore();
+		spawnSpy.mockRestore();
+	});
+});

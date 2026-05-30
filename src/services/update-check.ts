@@ -1,10 +1,11 @@
-import { existsSync, readFileSync, mkdirSync } from "fs";
+import { existsSync, mkdirSync, readFileSync } from "fs";
 import { writeFile } from "fs/promises";
 import { homedir } from "os";
 import { join } from "path";
 import { VERSION } from "../version";
 
-const REPO = "polarsource/cli";
+const REPO =
+	process.platform === "win32" ? "HQ92/polar-cli" : "polarsource/cli";
 const STATE_DIR = join(homedir(), ".polar");
 const STATE_FILE = join(STATE_DIR, "update-check.json");
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
