@@ -1,27 +1,6 @@
 import { Schema } from "effect";
 
-export const TokenScope = Schema.Array(
-  Schema.Literal(
-    "web:read",
-    "web:write",
-    "openid",
-    "profile",
-    "email",
-    "user:read",
-    "organizations:read",
-    "organizations:write",
-    "products:read",
-    "products:write",
-    "benefits:read",
-    "benefits:write",
-    "discounts:read",
-    "discounts:write",
-    "files:write",
-    "files:read",
-    "customers:write",
-    "customers:read",
-  ),
-);
+export const TokenScope = Schema.Array(Schema.String);
 
 export const Token = Schema.Struct({
   token: Schema.Redacted(Schema.String),
